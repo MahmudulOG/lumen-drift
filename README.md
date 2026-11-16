@@ -1,7 +1,11 @@
 # Lumen Drift
 
+[![make.fun · best-game-01](https://make.fun/badge/best-game-01.svg)](https://make.fun/bounty/best-game-01?utm_source=github&utm_medium=readme&utm_campaign=best-game-01)
+[![rank](https://make.fun/badge/best-game-01/MahmudulOG/lumen-drift/rank.svg)](https://make.fun/bounty/best-game-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=best-game-01)
+[![reward](https://make.fun/badge/best-game-01/MahmudulOG/lumen-drift/reward.svg)](https://make.fun/bounty/best-game-01?utm_source=github&utm_medium=readme&utm_campaign=best-game-01)
+
 A tiny game of light and moths, built for the make.fun "Make the best game"
-bounty (best-game-01).
+bounty ([best-game-01](https://make.fun/bounty/best-game-01)).
 
 You are a wisp in a night garden. Gather glowing motes to build light and
 combos, spend stored glow on a pulse that banishes the thorn moths hunting
