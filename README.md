@@ -31,6 +31,14 @@ sting costs one of your 3 lives.
 - **Floating score popups** on every collect and banish, a combo timer bar
   that drains under the combo counter, and a dash-readiness bar in the HUD,
   so every system the game runs is visible while you play.
+- **Three difficulties** on the title screen (keys 1/2/3): Chill (1,800
+  light, gentler moths), Normal (2,400) and Bold (3,000, faster and thicker
+  moths) — the goal, moth speed and spawn rate all follow the pick.
+- **Elder moths:** a big crowned moth drifts in every ~21 seconds — slower
+  than the swarm but twice the size, it takes **two pulses** to banish
+  (the first leaves it visibly cracked) and pays 25 light when it falls.
+- **A best-score record** kept in the browser between visits, shown on the
+  title and end screens next to the night's own result.
 
 ## Layout
 

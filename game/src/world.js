@@ -4,7 +4,9 @@
 // banishes every moth it touches. Pure state and steps: no drawing, no DOM,
 // so the screenshot scenes can run it headless from a seed.
 
-import { DASH, FIELD, GAME, MOTE, MOTH, PLAYER, PULSE } from './config.js';
+import {
+  DASH, DEFAULT_DIFFICULTY, DIFFICULTIES, FIELD, GAME, MOTE, MOTH, PLAYER, PULSE,
+} from './config.js';
 import { makeRandom, pointInField, range } from './random.js';
 
 export const SCREEN_TITLE = 'title';
@@ -50,11 +52,14 @@ export function comboTier(combo) {
   return Math.min(GAME.comboMaxTier, 1 + Math.floor(combo / GAME.comboPerTier));
 }
 
-export function createWorld(seed) {
+export function createWorld(seed, difficulty = DEFAULT_DIFFICULTY) {
   const random = makeRandom(seed);
   const state = {
     random,
     screen: SCREEN_TITLE,
+    difficulty,            // index into DIFFICULTIES, chosen on the title screen
+    goal: DIFFICULTIES[difficulty].goal,
+    best: 0,               // best score this player has reached (set by main.js)
     time: 0,               // seconds since the night began (play only)
     nightLeft: GAME.nightSeconds,
     score: 0,              // light gathered
@@ -83,6 +88,7 @@ export function createWorld(seed) {
     particles: [],
     popups: [],            // floating score text: {x, y, text, color, age, life}
     mothClock: MOTH.firstSpawnSeconds,
+    elderClock: MOTH.elderEverySeconds,
     brightClock: MOTE.brightEverySeconds * 0.5,
     shardClock: MOTE.shardEverySeconds * 0.75,
     events: [],
@@ -119,20 +125,25 @@ function addPopup(state, x, y, text, color) {
   state.popups.push({ x, y, text, color, age: 0, life: 0.9 });
 }
 
-function spawnMoth(state) {
+function spawnMoth(state, elder = false) {
   // Moths drift in from a random edge, never on top of the wisp.
+  const radius = elder ? MOTH.elderRadius : MOTH.radius;
   let p = pointInField(state.random, FIELD, 10);
   for (let tries = 0; tries < 8 && distance(p, state.player) < 190; tries += 1) {
     p = pointInField(state.random, FIELD, 10);
   }
   const edge = Math.floor(state.random() * 4);
-  if (edge === 0) p = { x: p.x, y: -MOTH.radius };
-  if (edge === 1) p = { x: p.x, y: FIELD.height + MOTH.radius };
-  if (edge === 2) p = { x: -MOTH.radius, y: p.y };
-  if (edge === 3) p = { x: FIELD.width + MOTH.radius, y: p.y };
+  if (edge === 0) p = { x: p.x, y: -radius };
+  if (edge === 1) p = { x: p.x, y: FIELD.height + radius };
+  if (edge === 2) p = { x: -radius, y: p.y };
+  if (edge === 3) p = { x: FIELD.width + radius, y: p.y };
   state.moths.push({
     x: p.x, y: p.y, vx: 0, vy: 0,
-    radius: MOTH.radius,
+    radius,
+    elder,
+    hp: elder ? MOTH.elderHp : 1,
+    banishValue: elder ? MOTH.elderValue : MOTH.banishValue,
+    speedFactor: elder ? MOTH.elderSpeedFactor : 1,
     phase: range(state.random, 0, Math.PI * 2),
     wing: range(state.random, 0, Math.PI * 2),
   });
@@ -154,10 +165,13 @@ function burst(state, x, y, color, count, speed) {
 /** Begin the night from the title screen (or restart after an ending). */
 export function startNight(state) {
   // A fresh seed drawn from the current stream: a restart is a new night,
-  // not a replay of the last one.
+  // not a replay of the last one. The chosen difficulty and the player's
+  // best score carry over the restart.
   const seed = Math.floor(state.random() * 1_000_000_000) + 1;
-  const fresh = createWorld(seed);
+  const best = Math.max(state.best || 0, state.score || 0);
+  const fresh = createWorld(seed, state.difficulty);
   Object.assign(state, fresh);
+  state.best = best;
   state.screen = SCREEN_PLAY;
 }
 
@@ -250,17 +264,24 @@ function updateMotes(state, dt) {
 function mothSpeed(state) {
   const t = 1 - state.nightLeft / GAME.nightSeconds; // 0 at dusk, 1 at dawn
   const ramp = MOTH.baseSpeed + (MOTH.topSpeed - MOTH.baseSpeed) * t;
-  return ramp * (1 + state.phase * 0.07); // each phase hunts a little faster
+  const phased = ramp * (1 + state.phase * 0.07); // each phase hunts faster
+  return phased * DIFFICULTIES[state.difficulty].mothSpeed;
 }
 
 function updateMoths(state, dt) {
   state.mothClock -= dt;
   const t = 1 - state.nightLeft / GAME.nightSeconds;
-  const interval = MOTH.spawnStartSeconds
-    + (MOTH.spawnEndSeconds - MOTH.spawnStartSeconds) * t;
+  const interval = (MOTH.spawnStartSeconds
+    + (MOTH.spawnEndSeconds - MOTH.spawnStartSeconds) * t)
+    * DIFFICULTIES[state.difficulty].spawnFactor;
   if (state.mothClock <= 0 && state.moths.length < MOTH.maxAlive) {
     spawnMoth(state);
     state.mothClock = interval;
+  }
+  state.elderClock -= dt;
+  if (state.elderClock <= 0 && state.moths.length < MOTH.maxAlive) {
+    spawnMoth(state, true);
+    state.elderClock = MOTH.elderEverySeconds * range(state.random, 0.85, 1.25);
   }
   const speed = mothSpeed(state);
   for (const moth of state.moths) {
@@ -269,8 +290,9 @@ function updateMoths(state, dt) {
     const wobble = Math.sin(state.time * MOTH.wobbleHz * Math.PI * 2 + moth.phase)
       * MOTH.wobblePx;
     const angle = toPlayer + (wobble / 160);
-    moth.vx = Math.cos(angle) * speed;
-    moth.vy = Math.sin(angle) * speed;
+    const own = speed * moth.speedFactor;
+    moth.vx = Math.cos(angle) * own;
+    moth.vy = Math.sin(angle) * own;
     moth.x += moth.vx * dt;
     moth.y += moth.vy * dt;
   }
@@ -283,9 +305,16 @@ function updatePulse(state, dt) {
   const r = PULSE.radius * (state.pulseRing.age / PULSE.expandSeconds);
   state.moths = state.moths.filter((moth) => {
     if (distance(moth, state.player) <= r + moth.radius) {
-      state.score += MOTH.banishValue;
-      addPopup(state, moth.x, moth.y - 14, `+${MOTH.banishValue}`, '#c084fc');
-      burst(state, moth.x, moth.y, '#c084fc', 8, 120);
+      moth.hp -= 1;
+      if (moth.hp > 0) {
+        // An elder moth survives its first pulse, cracked but still coming.
+        addPopup(state, moth.x, moth.y - 22, 'CRACKED', '#e9c4ff');
+        burst(state, moth.x, moth.y, '#c084fc', 6, 100);
+        return true;
+      }
+      state.score += moth.banishValue;
+      addPopup(state, moth.x, moth.y - 14, `+${moth.banishValue}`, '#c084fc');
+      burst(state, moth.x, moth.y, '#c084fc', moth.elder ? 16 : 8, 120);
       state.events.push(EVENT_BANISH);
       return false;
     }
@@ -379,7 +408,7 @@ export function stepWorld(state, input, dt) {
     updateMoths(state, dt);
     updatePulse(state, dt);
     updateCollisions(state);
-    if (state.score >= GAME.goal) endNight(state, true);
+    if (state.score >= state.goal) endNight(state, true);
     else if (state.lives <= 0) endNight(state, false);
     else if (state.nightLeft <= 0) endNight(state, false);
   }

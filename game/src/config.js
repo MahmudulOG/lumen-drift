@@ -54,6 +54,11 @@ export const MOTH = {
   spawnEndSeconds: 0.7,   // seconds between moths near dawn
   maxAlive: 16,
   banishValue: 5,      // light for a moth destroyed by a pulse
+  elderEverySeconds: 21,   // an elder moth drifts in about this often
+  elderRadius: 20,         // much bigger than a common moth
+  elderSpeedFactor: 0.55,  // and much slower
+  elderHp: 2,              // but it takes two pulses to banish
+  elderValue: 25,          // and pays five times the light when it falls
 };
 
 export const PULSE = {
@@ -65,12 +70,21 @@ export const PULSE = {
 };
 
 export const GAME = {
-  goal: 2400,          // light to gather before the night ends: the win
+  goal: 2400,          // light to gather before the night ends: the win (Normal)
   nightSeconds: 150,   // the night's length; dawn at zero
   comboWindowSeconds: 1.7,  // collect again within this to grow the combo
   comboPerTier: 3,     // combo count per multiplier tier (x1, x2, x3, x4)
   comboMaxTier: 4,
 };
+
+// Chosen on the title screen (keys 1/2/3). Chill is a shorter, gentler
+// night; Bold asks for more light against faster, thicker moths.
+export const DIFFICULTIES = [
+  { id: 'chill', name: 'CHILL', goal: 1800, mothSpeed: 0.85, spawnFactor: 1.2 },
+  { id: 'normal', name: 'NORMAL', goal: 2400, mothSpeed: 1, spawnFactor: 1 },
+  { id: 'bold', name: 'BOLD', goal: 3000, mothSpeed: 1.15, spawnFactor: 0.85 },
+];
+export const DEFAULT_DIFFICULTY = 1; // Normal
 
 // The night garden palette.
 export const COLORS = {

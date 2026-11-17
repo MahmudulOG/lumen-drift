@@ -2,7 +2,7 @@
 // images, no fonts to load. `now` is a seconds clock for ambient motion
 // (glow breathing, fireflies) that sits outside the fixed-step simulation.
 
-import { COLORS, DASH, FIELD, GAME, PLAYER, PULSE } from './config.js';
+import { COLORS, DASH, DIFFICULTIES, FIELD, GAME, MOTH, PLAYER, PULSE } from './config.js';
 import { makeRandom } from './random.js';
 import {
   PHASES, SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WIN, comboTier,
@@ -163,6 +163,8 @@ function drawMoth(ctx, moth, now) {
   ctx.translate(moth.x, moth.y);
   const angle = Math.atan2(moth.vy, moth.vx);
   ctx.rotate(angle + Math.PI / 2);
+  const scale = moth.radius / MOTH.radius;
+  ctx.scale(scale, scale);
   // Wings.
   ctx.fillStyle = COLORS.mothWing;
   for (const side of [-1, 1]) {
@@ -180,6 +182,27 @@ function drawMoth(ctx, moth, now) {
   ctx.quadraticCurveTo(7, 0, 0, 13);
   ctx.quadraticCurveTo(-7, 0, 0, -13);
   ctx.fill();
+  if (moth.elder) {
+    // An elder wears a crown of thorns; a cracked one (a pulse survived)
+    // shows a pale scar down its body.
+    ctx.strokeStyle = '#e9c4ff';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    for (const dx of [-6, 0, 6]) {
+      ctx.moveTo(dx, -10);
+      ctx.lineTo(dx * 1.3, -17);
+    }
+    ctx.stroke();
+    if (moth.hp < 2) {
+      ctx.strokeStyle = 'rgba(233,196,255,0.85)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(-2, -8);
+      ctx.lineTo(1, 0);
+      ctx.lineTo(-1, 8);
+      ctx.stroke();
+    }
+  }
   // Eyes.
   ctx.fillStyle = COLORS.mothEye;
   ctx.beginPath();
@@ -278,8 +301,8 @@ function drawHud(ctx, state) {
   ctx.font = '700 15px system-ui, sans-serif';
   ctx.fillStyle = COLORS.text;
   ctx.textAlign = 'left';
-  ctx.fillText(`LIGHT ${state.score} / ${GAME.goal}`, 16, 12);
-  bar(ctx, 16, 34, 250, 9, state.score / GAME.goal, COLORS.mote);
+  ctx.fillText(`LIGHT ${state.score} / ${state.goal}`, 16, 12);
+  bar(ctx, 16, 34, 250, 9, state.score / state.goal, COLORS.mote);
   // Night left.
   const mm = Math.floor(state.nightLeft / 60);
   const ss = Math.floor(state.nightLeft % 60).toString().padStart(2, '0');
@@ -347,11 +370,20 @@ function drawTitle(ctx, state, now) {
     '600 15px system-ui, sans-serif', COLORS.textDim);
   centerText(ctx, 'Dash: Shift      Pause: P      Chase the icy star shards — 60 light, gone in seconds', 292,
     '600 15px system-ui, sans-serif', COLORS.textDim);
-  centerText(ctx, `Collect motes to build glow and combos. Reach ${GAME.goal} light to win.`, 316,
+  centerText(ctx, `Collect motes to build glow and combos. Reach ${state.goal} light to win.`, 316,
     '600 15px system-ui, sans-serif', COLORS.textDim);
+  // The difficulty pick: the chosen one is bracketed and lit.
+  const names = DIFFICULTIES
+    .map((d, i) => (i === state.difficulty ? `[ ${i + 1} ${d.name} ]` : `${i + 1} ${d.name}`))
+    .join('     ');
+  centerText(ctx, names, 344, '700 15px system-ui, sans-serif', COLORS.good);
+  if (state.best > 0) {
+    centerText(ctx, `BEST SO FAR: ${state.best} LIGHT`, 368,
+      '600 13px system-ui, sans-serif', COLORS.moteBright);
+  }
   const blink = 0.6 + 0.4 * Math.sin(now * 3);
   ctx.globalAlpha = blink;
-  centerText(ctx, 'CLICK OR PRESS ENTER TO BEGIN', 356,
+  centerText(ctx, 'CLICK OR PRESS ENTER TO BEGIN', 392,
     '700 18px system-ui, sans-serif', COLORS.good);
   ctx.globalAlpha = 1;
 }
@@ -361,9 +393,9 @@ function drawEnd(ctx, state, won) {
   ctx.fillRect(0, 0, FIELD.width, FIELD.height);
   centerText(ctx, won ? 'DAWN BREAKS — YOU WIN' : 'THE GARDEN GOES DARK',
     168, '800 40px system-ui, sans-serif', won ? COLORS.good : COLORS.danger);
-  centerText(ctx, `Light gathered: ${state.score} of ${GAME.goal}`, 232,
+  centerText(ctx, `Light gathered: ${state.score} of ${state.goal} on ${DIFFICULTIES[state.difficulty].name}`, 232,
     '600 20px system-ui, sans-serif', COLORS.text);
-  centerText(ctx, `Best combo chain: ${state.bestCombo}    Time in the night: ${Math.floor(state.time)}s`,
+  centerText(ctx, `Best combo chain: ${state.bestCombo}    Time in the night: ${Math.floor(state.time)}s    Best so far: ${Math.max(state.best || 0, state.score)}`,
     264, '600 16px system-ui, sans-serif', COLORS.textDim);
   centerText(ctx, won ? 'The garden glows again because of you.' : 'The motes scatter… this time.',
     300, '500 16px system-ui, sans-serif', COLORS.textDim);

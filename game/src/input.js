@@ -10,6 +10,7 @@ const MOVE_KEYS = {
 export function createInput(canvas) {
   const held = { left: false, right: false, up: false, down: false };
   const pressed = { pulse: false, confirm: false, mute: false, dash: false, pause: false };
+  let difficultyPick = null; // 0/1/2 from the Digit1/2/3 keys, or null
   const pointer = { x: 0, y: 0, down: false };
 
   function canvasPoint(event) {
@@ -30,6 +31,9 @@ export function createInput(canvas) {
     if (event.repeat) return;
     if (event.code === 'Space') { pressed.pulse = true; event.preventDefault(); }
     if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') pressed.dash = true;
+    if (event.code === 'Digit1') difficultyPick = 0;
+    if (event.code === 'Digit2') difficultyPick = 1;
+    if (event.code === 'Digit3') difficultyPick = 2;
     if (event.code === 'KeyP' || event.code === 'Escape') pressed.pause = true;
     if (event.code === 'Enter' || event.code === 'KeyR') pressed.confirm = true;
     if (event.code === 'KeyM') pressed.mute = true;
@@ -72,6 +76,12 @@ export function createInput(canvas) {
       const was = pressed[name];
       pressed[name] = false;
       return was;
+    },
+    /** Take a difficulty pick (0, 1 or 2), or null if none was pressed. */
+    takeDifficulty() {
+      const pick = difficultyPick;
+      difficultyPick = null;
+      return pick;
     },
   };
 }

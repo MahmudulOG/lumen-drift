@@ -32,6 +32,20 @@ if (shotName) {
   const audio = createAudio();
   const state = createWorld((Date.now() % 90000) + 7);
 
+  // The player's best score, kept between visits. Storage can be missing
+  // or blocked (a private window, a sandboxed frame): the game just plays
+  // without a record then.
+  const BEST_KEY = 'lumen-drift-best';
+  try {
+    state.best = Number(window.localStorage.getItem(BEST_KEY)) || 0;
+  } catch { state.best = 0; }
+  function saveBest() {
+    state.best = Math.max(state.best || 0, state.score);
+    try {
+      window.localStorage.setItem(BEST_KEY, String(state.best));
+    } catch { /* no storage: the record lives only in this page */ }
+  }
+
   function playEvents() {
     for (const event of state.events) {
       if (event === EVENT_COLLECT) audio.collect(state.combo);
@@ -43,8 +57,8 @@ if (shotName) {
       else if (event === EVENT_PULSE) audio.pulse();
       else if (event === EVENT_DENIED) audio.denied();
       else if (event === EVENT_HIT) audio.hit();
-      else if (event === EVENT_WIN) { audio.win(); audio.stopPad(); }
-      else if (event === EVENT_LOSE) { audio.lose(); audio.stopPad(); }
+      else if (event === EVENT_WIN) { audio.win(); audio.stopPad(); saveBest(); }
+      else if (event === EVENT_LOSE) { audio.lose(); audio.stopPad(); saveBest(); }
     }
     state.events.length = 0;
   }
@@ -67,6 +81,14 @@ if (shotName) {
 
     if (state.screen === SCREEN_TITLE || state.screen === SCREEN_OVER
       || state.screen === SCREEN_WIN) {
+      const pick = input.takeDifficulty();
+      if (pick !== null && pick !== state.difficulty) {
+        // Rebuild the title world at the new goal so the title screen's
+        // own text (and the night that follows) matches the pick.
+        const fresh = createWorld((Date.now() % 90000) + 7, pick);
+        fresh.best = state.best;
+        Object.assign(state, fresh);
+      }
       if (input.take('confirm')) {
         audio.unlock();
         startNight(state);
