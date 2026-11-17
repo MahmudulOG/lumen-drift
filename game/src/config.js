@@ -19,13 +19,28 @@ export const PLAYER = {
 export const MOTE = {
   radius: 8,
   brightRadius: 11,
+  shardRadius: 10,
   value: 10,           // light for a common mote
   brightValue: 30,     // light for a bright mote
+  shardValue: 60,      // light for a rare star shard
   keepOnField: 5,      // common motes the world tries to keep available
   brightEverySeconds: 11,
   brightLifetimeSeconds: 8,
   brightDriftSpeed: 26,
+  shardEverySeconds: 24,   // a star shard appears about this often
+  shardLifetimeSeconds: 7, // and is gone again this quickly: chase it or lose it
+  shardDriftSpeed: 55,
   glowGain: 9,         // pulse meter gained per mote of either kind
+  shardGlowGain: 20,   // a shard refills much more of the pulse meter
+};
+
+// A short burst of speed on Shift: the wisp's escape move. It costs nothing
+// but time — the cooldown is the price, so a dash spent early is a dash that
+// is not there when a moth corners you.
+export const DASH = {
+  speed: 660,            // px per second while dashing
+  seconds: 0.16,         // how long one dash lasts
+  cooldownSeconds: 2.2,  // before the next dash is ready
 };
 
 export const MOTH = {
@@ -68,6 +83,8 @@ export const COLORS = {
   wispGlow: '#ffd76a',
   mote: '#ffcf5e',
   moteBright: '#ffeeb0',
+  shard: '#aee9ff',
+  shardCore: '#e8fbff',
   mothBody: '#3a1440',
   mothWing: '#7a2d6d',
   mothEye: '#ff5d7a',

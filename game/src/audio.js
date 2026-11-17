@@ -74,6 +74,14 @@ export function createAudio() {
       tone(880, 1320, 0.16, 'sine', 0.16);
       tone(1320, 1760, 0.2, 'sine', 0.1, 0.05);
     },
+    shard() {
+      [1047, 1319, 1568, 2093].forEach((f, i) => tone(f, f, 0.14, 'sine', 0.11, i * 0.05));
+    },
+    dash() { tone(280, 920, 0.16, 'triangle', 0.1); },
+    phase() {
+      tone(330, 330, 0.3, 'sine', 0.09);
+      tone(415, 415, 0.36, 'sine', 0.08, 0.12);
+    },
     banish() { tone(340, 90, 0.14, 'square', 0.06); },
     pulse() {
       tone(220, 660, 0.22, 'sine', 0.14);

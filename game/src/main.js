@@ -10,9 +10,9 @@ import { render } from './render.js';
 import { runScene } from './shots.js';
 import {
   SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WIN,
-  EVENT_BANISH, EVENT_BRIGHT, EVENT_COLLECT, EVENT_DENIED, EVENT_HIT,
-  EVENT_LOSE, EVENT_PULSE, EVENT_WIN,
-  createWorld, startNight, stepWorld, tryPulse,
+  EVENT_BANISH, EVENT_BRIGHT, EVENT_COLLECT, EVENT_DASH, EVENT_DENIED,
+  EVENT_HIT, EVENT_LOSE, EVENT_PHASE, EVENT_PULSE, EVENT_SHARD, EVENT_WIN,
+  createWorld, startNight, stepWorld, tryDash, tryPulse,
 } from './world.js';
 
 const canvas = document.getElementById('game');
@@ -36,6 +36,9 @@ if (shotName) {
     for (const event of state.events) {
       if (event === EVENT_COLLECT) audio.collect(state.combo);
       else if (event === EVENT_BRIGHT) audio.bright();
+      else if (event === EVENT_SHARD) audio.shard();
+      else if (event === EVENT_DASH) audio.dash();
+      else if (event === EVENT_PHASE) audio.phase();
       else if (event === EVENT_BANISH) audio.banish();
       else if (event === EVENT_PULSE) audio.pulse();
       else if (event === EVENT_DENIED) audio.denied();
@@ -58,20 +61,32 @@ if (shotName) {
 
     if (input.take('mute')) audio.setMuted(!audio.isMuted());
 
+    if (state.screen === SCREEN_PLAY && input.take('pause')) {
+      state.paused = !state.paused;
+    }
+
     if (state.screen === SCREEN_TITLE || state.screen === SCREEN_OVER
       || state.screen === SCREEN_WIN) {
       if (input.take('confirm')) {
         audio.unlock();
         startNight(state);
         input.take('pulse'); // the same click must not fire a pulse
+        input.take('dash');
         audio.start();
         audio.startPad();
       }
-    } else if (state.screen === SCREEN_PLAY) {
+    } else if (state.screen === SCREEN_PLAY && !state.paused) {
       if (input.take('pulse')) {
         audio.unlock();
         tryPulse(state);
       }
+      if (input.take('dash')) {
+        audio.unlock();
+        tryDash(state);
+      }
+    } else {
+      input.take('pulse');
+      input.take('dash');
     }
 
     while (accumulator >= STEP) {

@@ -6,7 +6,7 @@
 
 import { FIELD, PULSE, STEP } from './config.js';
 import {
-  SCREEN_OVER, createWorld, startNight, stepWorld, tryPulse,
+  SCREEN_OVER, createWorld, startNight, stepWorld, tryDash, tryPulse,
 } from './world.js';
 
 function nearestMote(state) {
@@ -14,7 +14,7 @@ function nearestMote(state) {
   let bestScore = Infinity;
   for (const mote of state.motes) {
     const d = Math.hypot(mote.x - state.player.x, mote.y - state.player.y);
-    const score = mote.bright ? d * 0.45 : d;
+    const score = mote.shard ? d * 0.3 : (mote.bright ? d * 0.45 : d);
     if (score < bestScore) { bestScore = score; best = mote; }
   }
   return best;
@@ -94,9 +94,14 @@ function runSteps(state, pilot, seconds, { pulse = true } = {}) {
   const input = { direction: () => pilot.steer(state) };
   const steps = Math.floor(seconds / STEP);
   for (let i = 0; i < steps; i += 1) {
+    const moth = nearestMoth(state);
+    const mothDist = moth
+      ? Math.hypot(moth.x - state.player.x, moth.y - state.player.y) : Infinity;
+    if (pulse && mothDist < 72 && state.dashCooldown <= 0) {
+      tryDash(state); // the careful pilot dashes out of a close chase
+    }
     if (pulse && state.glow >= PULSE.cost && state.pulseCooldown <= 0) {
-      const moth = nearestMoth(state);
-      if (moth && Math.hypot(moth.x - state.player.x, moth.y - state.player.y) < 96) {
+      if (moth && mothDist < 96) {
         tryPulse(state);
       }
     }

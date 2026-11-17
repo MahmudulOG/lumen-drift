@@ -2,10 +2,10 @@
 // images, no fonts to load. `now` is a seconds clock for ambient motion
 // (glow breathing, fireflies) that sits outside the fixed-step simulation.
 
-import { COLORS, FIELD, GAME, PLAYER, PULSE } from './config.js';
+import { COLORS, DASH, FIELD, GAME, PLAYER, PULSE } from './config.js';
 import { makeRandom } from './random.js';
 import {
-  SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WIN, comboTier,
+  PHASES, SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WIN, comboTier,
 } from './world.js';
 
 // The garden backdrop is fixed: one seeded scatter of stars, fireflies and
@@ -104,6 +104,34 @@ function drawMote(ctx, mote, now) {
   const y = mote.y + bob;
   const pulse = 1 + 0.12 * Math.sin(now * 3 + mote.phase);
   const r = mote.radius * pulse;
+  if (mote.shard) {
+    // A star shard: a spinning icy diamond with a bright core, worth far
+    // more than a mote and gone in seconds — it should read at a glance.
+    const glow = ctx.createRadialGradient(mote.x, y, 1, mote.x, y, r * 3.4);
+    glow.addColorStop(0, 'rgba(174,233,255,0.6)');
+    glow.addColorStop(1, 'rgba(174,233,255,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(mote.x, y, r * 3.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.save();
+    ctx.translate(mote.x, y);
+    ctx.rotate(now * 1.8 + mote.phase);
+    ctx.fillStyle = COLORS.shard;
+    ctx.beginPath();
+    ctx.moveTo(0, -r * 1.5);
+    ctx.lineTo(r * 0.95, 0);
+    ctx.lineTo(0, r * 1.5);
+    ctx.lineTo(-r * 0.95, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = COLORS.shardCore;
+    ctx.beginPath();
+    ctx.arc(mote.x, y, r * 0.38, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
   const glow = ctx.createRadialGradient(mote.x, y, 1, mote.x, y, r * 3.1);
   const color = mote.bright ? COLORS.moteBright : COLORS.mote;
   glow.addColorStop(0, 'rgba(255,220,130,0.55)');
@@ -215,6 +243,28 @@ function drawParticles(ctx, state) {
   ctx.globalAlpha = 1;
 }
 
+function drawPopups(ctx, state) {
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.font = '700 14px system-ui, sans-serif';
+  for (const pop of state.popups) {
+    const a = 1 - pop.age / pop.life;
+    ctx.globalAlpha = Math.max(0, a);
+    ctx.fillStyle = pop.color;
+    ctx.fillText(pop.text, pop.x, pop.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawBanner(ctx, state) {
+  if (!state.banner) return;
+  const fade = Math.min(1, state.banner.left / 0.5);
+  ctx.globalAlpha = Math.max(0, fade);
+  centerText(ctx, state.banner.text, 84, '800 30px system-ui, sans-serif', COLORS.moteBright);
+  centerText(ctx, state.banner.note, 122, '600 14px system-ui, sans-serif', COLORS.text);
+  ctx.globalAlpha = 1;
+}
+
 function bar(ctx, x, y, w, h, frac, fill, back = 'rgba(255,255,255,0.14)') {
   ctx.fillStyle = back;
   ctx.fillRect(x, y, w, h);
@@ -237,6 +287,9 @@ function drawHud(ctx, state) {
   ctx.fillStyle = state.nightLeft < 20 ? COLORS.danger : COLORS.text;
   ctx.font = '700 17px system-ui, sans-serif';
   ctx.fillText(`DAWN IN ${mm}:${ss}`, FIELD.width / 2, 11);
+  ctx.fillStyle = COLORS.textDim;
+  ctx.font = '600 11px system-ui, sans-serif';
+  ctx.fillText(PHASES[state.phase].name, FIELD.width / 2, 34);
   // Lives, as wisp orbs.
   ctx.textAlign = 'right';
   ctx.font = '700 15px system-ui, sans-serif';
@@ -255,7 +308,18 @@ function drawHud(ctx, state) {
     ctx.fillStyle = COLORS.moteBright;
     ctx.font = '700 16px system-ui, sans-serif';
     ctx.fillText(`COMBO x${comboTier(state.combo)}  (${state.combo} chain)`, 16, FIELD.height - 30);
+    // The chain's remaining time, draining under the combo text.
+    bar(ctx, 16, FIELD.height - 44, 120, 5,
+      state.comboLeft / GAME.comboWindowSeconds, COLORS.moteBright);
   }
+  // Dash readiness, bottom centre.
+  ctx.textAlign = 'center';
+  ctx.fillStyle = COLORS.textDim;
+  ctx.font = '600 12px system-ui, sans-serif';
+  ctx.fillText('SHIFT: DASH', FIELD.width / 2, FIELD.height - 46);
+  bar(ctx, FIELD.width / 2 - 45, FIELD.height - 30, 90, 9,
+    1 - Math.max(0, state.dashCooldown) / DASH.cooldownSeconds,
+    state.dashCooldown <= 0 ? COLORS.good : 'rgba(141,255,154,0.4)');
   ctx.textAlign = 'right';
   ctx.fillStyle = COLORS.textDim;
   ctx.font = '600 12px system-ui, sans-serif';
@@ -281,7 +345,9 @@ function drawTitle(ctx, state, now) {
     '500 19px system-ui, sans-serif', COLORS.text);
   centerText(ctx, 'Move: WASD / arrow keys      Pulse: Space or click (costs glow)', 268,
     '600 15px system-ui, sans-serif', COLORS.textDim);
-  centerText(ctx, `Collect motes to build glow and combos. Reach ${GAME.goal} light to win.`, 292,
+  centerText(ctx, 'Dash: Shift      Pause: P      Chase the icy star shards — 60 light, gone in seconds', 292,
+    '600 15px system-ui, sans-serif', COLORS.textDim);
+  centerText(ctx, `Collect motes to build glow and combos. Reach ${GAME.goal} light to win.`, 316,
     '600 15px system-ui, sans-serif', COLORS.textDim);
   const blink = 0.6 + 0.4 * Math.sin(now * 3);
   ctx.globalAlpha = blink;
@@ -321,9 +387,16 @@ export function render(ctx, state, now) {
     drawPulse(ctx, state);
     drawWisp(ctx, state, now);
     drawParticles(ctx, state);
-    if (state.screen === SCREEN_PLAY) drawHud(ctx, state);
+    drawPopups(ctx, state);
+    if (state.screen === SCREEN_PLAY) { drawHud(ctx, state); drawBanner(ctx, state); }
     if (state.screen === SCREEN_OVER) { drawHud(ctx, state); drawEnd(ctx, state, false); }
     if (state.screen === SCREEN_WIN) { drawHud(ctx, state); drawEnd(ctx, state, true); }
+    if (state.paused) {
+      ctx.fillStyle = 'rgba(5,6,18,0.5)';
+      ctx.fillRect(0, 0, FIELD.width, FIELD.height);
+      centerText(ctx, 'PAUSED', 250, '800 36px system-ui, sans-serif', COLORS.text);
+      centerText(ctx, 'Press P to drift on', 300, '600 15px system-ui, sans-serif', COLORS.textDim);
+    }
   }
   ctx.restore();
   if (state.flash > 0) {

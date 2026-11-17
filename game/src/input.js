@@ -9,7 +9,7 @@ const MOVE_KEYS = {
 
 export function createInput(canvas) {
   const held = { left: false, right: false, up: false, down: false };
-  const pressed = { pulse: false, confirm: false, mute: false };
+  const pressed = { pulse: false, confirm: false, mute: false, dash: false, pause: false };
   const pointer = { x: 0, y: 0, down: false };
 
   function canvasPoint(event) {
@@ -29,6 +29,8 @@ export function createInput(canvas) {
     }
     if (event.repeat) return;
     if (event.code === 'Space') { pressed.pulse = true; event.preventDefault(); }
+    if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') pressed.dash = true;
+    if (event.code === 'KeyP' || event.code === 'Escape') pressed.pause = true;
     if (event.code === 'Enter' || event.code === 'KeyR') pressed.confirm = true;
     if (event.code === 'KeyM') pressed.mute = true;
   });

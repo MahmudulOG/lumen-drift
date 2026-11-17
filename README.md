@@ -14,8 +14,23 @@ sting costs one of your 3 lives.
 
 - **Move:** WASD or arrow keys
 - **Pulse:** Space or click (costs 35 glow; motes refill it)
+- **Dash:** Shift — a short burst of speed in the direction you last moved,
+  on a 2.2-second cooldown; your escape when a moth corners you
+- **Pause:** P or Esc
 - **Restart:** R or click on the end screens
 - **Mute:** M
+
+## What's in the garden
+
+- **Star shards:** a rare icy diamond worth 60 light appears every ~24
+  seconds, drifts fast, and vanishes after 7 — chase it or lose it. It also
+  refills a big chunk of your pulse glow.
+- **Three phases of night:** Dusk, Midnight and Pre-Dawn, each announced on
+  a banner; the moths hunt a little faster in each phase, on top of the
+  steady ramp toward dawn.
+- **Floating score popups** on every collect and banish, a combo timer bar
+  that drains under the combo counter, and a dash-readiness bar in the HUD,
+  so every system the game runs is visible while you play.
 
 ## Layout
 

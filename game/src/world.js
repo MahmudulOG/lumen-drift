@@ -4,7 +4,7 @@
 // banishes every moth it touches. Pure state and steps: no drawing, no DOM,
 // so the screenshot scenes can run it headless from a seed.
 
-import { FIELD, GAME, MOTE, MOTH, PLAYER, PULSE } from './config.js';
+import { DASH, FIELD, GAME, MOTE, MOTH, PLAYER, PULSE } from './config.js';
 import { makeRandom, pointInField, range } from './random.js';
 
 export const SCREEN_TITLE = 'title';
@@ -14,12 +14,30 @@ export const SCREEN_WIN = 'win';
 
 export const EVENT_COLLECT = 'collect';
 export const EVENT_BRIGHT = 'bright';
+export const EVENT_SHARD = 'shard';
 export const EVENT_BANISH = 'banish';
 export const EVENT_PULSE = 'pulse';
+export const EVENT_DASH = 'dash';
+export const EVENT_PHASE = 'phase';
 export const EVENT_DENIED = 'denied';
 export const EVENT_HIT = 'hit';
 export const EVENT_WIN = 'win';
 export const EVENT_LOSE = 'lose';
+
+// The night deepens in three phases. Each new phase is announced on a
+// banner, and the moths hunt a little faster in each.
+export const PHASES = [
+  { name: 'DUSK', note: 'The garden wakes. Gather light.' },
+  { name: 'MIDNIGHT', note: 'The moths hunt faster now.' },
+  { name: 'PRE-DAWN', note: 'Hold on — dawn is close.' },
+];
+
+/** Which phase a remaining-night time falls in: 0 dusk, 1 midnight, 2 pre-dawn. */
+export function phaseFor(nightLeft) {
+  if (nightLeft > 100) return 0;
+  if (nightLeft > 50) return 1;
+  return 2;
+}
 
 function distance(a, b) {
   const dx = a.x - b.x;
@@ -47,42 +65,58 @@ export function createWorld(seed) {
     glow: 40,              // pulse meter, 0..PULSE.maxGlow
     pulseCooldown: 0,
     pulseRing: null,       // {age} while a pulse is expanding
+    dashTime: 0,           // seconds left in the current dash
+    dashCooldown: 0,       // seconds before the next dash is ready
+    phase: 0,              // index into PHASES for the current part of the night
+    banner: null,          // {text, note, left} while a phase banner is showing
+    paused: false,
     shake: 0,              // seconds of screen shake left
     flash: 0,              // seconds of red edge flash left (on a sting)
     player: {
       x: FIELD.width / 2, y: FIELD.height / 2, vx: 0, vy: 0,
       radius: PLAYER.radius,
       invulnerable: 0, trail: [],
+      face: { x: 1, y: 0 },  // last direction moved: a dash goes this way
     },
     motes: [],
     moths: [],
     particles: [],
+    popups: [],            // floating score text: {x, y, text, color, age, life}
     mothClock: MOTH.firstSpawnSeconds,
     brightClock: MOTE.brightEverySeconds * 0.5,
+    shardClock: MOTE.shardEverySeconds * 0.75,
     events: [],
   };
   for (let i = 0; i < MOTE.keepOnField; i += 1) spawnMote(state, false);
   return state;
 }
 
-function spawnMote(state, bright) {
+function spawnMote(state, bright, shard = false) {
   const p = pointInField(state.random, FIELD, 46);
   const mote = {
     x: p.x, y: p.y,
-    radius: bright ? MOTE.brightRadius : MOTE.radius,
-    value: bright ? MOTE.brightValue : MOTE.value,
+    radius: shard ? MOTE.shardRadius : (bright ? MOTE.brightRadius : MOTE.radius),
+    value: shard ? MOTE.shardValue : (bright ? MOTE.brightValue : MOTE.value),
     bright,
+    shard,
     phase: range(state.random, 0, Math.PI * 2),
     vx: 0, vy: 0,
-    life: bright ? MOTE.brightLifetimeSeconds : Infinity,
+    life: shard ? MOTE.shardLifetimeSeconds
+      : (bright ? MOTE.brightLifetimeSeconds : Infinity),
   };
-  if (bright) {
+  if (bright || shard) {
     const angle = range(state.random, 0, Math.PI * 2);
-    mote.vx = Math.cos(angle) * MOTE.brightDriftSpeed;
-    mote.vy = Math.sin(angle) * MOTE.brightDriftSpeed;
+    const drift = shard ? MOTE.shardDriftSpeed : MOTE.brightDriftSpeed;
+    mote.vx = Math.cos(angle) * drift;
+    mote.vy = Math.sin(angle) * drift;
   }
   state.motes.push(mote);
   return mote;
+}
+
+/** A line of score text that floats up from a point and fades. */
+function addPopup(state, x, y, text, color) {
+  state.popups.push({ x, y, text, color, age: 0, life: 0.9 });
 }
 
 function spawnMoth(state) {
@@ -132,9 +166,18 @@ function endNight(state, won) {
   state.events.push(won ? EVENT_WIN : EVENT_LOSE);
 }
 
+/** Dash in the direction the wisp last moved, if the cooldown is ready. */
+export function tryDash(state) {
+  if (state.screen !== SCREEN_PLAY || state.paused) return;
+  if (state.dashCooldown > 0 || state.dashTime > 0) return;
+  state.dashTime = DASH.seconds;
+  state.dashCooldown = DASH.cooldownSeconds;
+  state.events.push(EVENT_DASH);
+}
+
 /** Fire a pulse if the meter and cooldown allow it. */
 export function tryPulse(state) {
-  if (state.screen !== SCREEN_PLAY) return;
+  if (state.screen !== SCREEN_PLAY || state.paused) return;
   if (state.pulseCooldown > 0) return;
   if (state.glow < PULSE.cost) {
     state.events.push(EVENT_DENIED);
@@ -150,9 +193,21 @@ export function tryPulse(state) {
 function updatePlayer(state, input, dt) {
   const p = state.player;
   const dir = input.direction();
-  const ease = Math.min(1, PLAYER.accel * dt);
-  p.vx += (dir.x * PLAYER.speed - p.vx) * ease;
-  p.vy += (dir.y * PLAYER.speed - p.vy) * ease;
+  if (dir.x !== 0 || dir.y !== 0) {
+    const len = Math.hypot(dir.x, dir.y) || 1;
+    p.face = { x: dir.x / len, y: dir.y / len };
+  }
+  if (state.dashCooldown > 0) state.dashCooldown -= dt;
+  if (state.dashTime > 0) {
+    // A dash overrides the easing: full burst speed along the facing.
+    state.dashTime -= dt;
+    p.vx = p.face.x * DASH.speed;
+    p.vy = p.face.y * DASH.speed;
+  } else {
+    const ease = Math.min(1, PLAYER.accel * dt);
+    p.vx += (dir.x * PLAYER.speed - p.vx) * ease;
+    p.vy += (dir.y * PLAYER.speed - p.vy) * ease;
+  }
   p.x = Math.min(FIELD.width - p.radius, Math.max(p.radius, p.x + p.vx * dt));
   p.y = Math.min(FIELD.height - p.radius, Math.max(p.radius, p.y + p.vy * dt));
   if (p.invulnerable > 0) p.invulnerable -= dt;
@@ -163,9 +218,9 @@ function updatePlayer(state, input, dt) {
 function updateMotes(state, dt) {
   let common = 0;
   for (const mote of state.motes) {
-    if (!mote.bright) common += 1;
+    if (!mote.bright && !mote.shard) common += 1;
     mote.phase += dt * 2.4;
-    if (mote.bright) {
+    if (mote.life !== Infinity) {
       mote.life -= dt;
       mote.x += mote.vx * dt;
       mote.y += mote.vy * dt;
@@ -185,11 +240,17 @@ function updateMotes(state, dt) {
     spawnMote(state, true);
     state.brightClock = MOTE.brightEverySeconds * range(state.random, 0.8, 1.25);
   }
+  state.shardClock -= dt;
+  if (state.shardClock <= 0) {
+    spawnMote(state, false, true);
+    state.shardClock = MOTE.shardEverySeconds * range(state.random, 0.85, 1.2);
+  }
 }
 
 function mothSpeed(state) {
   const t = 1 - state.nightLeft / GAME.nightSeconds; // 0 at dusk, 1 at dawn
-  return MOTH.baseSpeed + (MOTH.topSpeed - MOTH.baseSpeed) * t;
+  const ramp = MOTH.baseSpeed + (MOTH.topSpeed - MOTH.baseSpeed) * t;
+  return ramp * (1 + state.phase * 0.07); // each phase hunts a little faster
 }
 
 function updateMoths(state, dt) {
@@ -223,6 +284,7 @@ function updatePulse(state, dt) {
   state.moths = state.moths.filter((moth) => {
     if (distance(moth, state.player) <= r + moth.radius) {
       state.score += MOTH.banishValue;
+      addPopup(state, moth.x, moth.y - 14, `+${MOTH.banishValue}`, '#c084fc');
       burst(state, moth.x, moth.y, '#c084fc', 8, 120);
       state.events.push(EVENT_BANISH);
       return false;
@@ -240,11 +302,16 @@ function updateCollisions(state) {
       state.combo = state.comboLeft > 0 ? state.combo + 1 : 1;
       state.comboLeft = GAME.comboWindowSeconds;
       state.bestCombo = Math.max(state.bestCombo, state.combo);
-      const gained = mote.value * comboTier(state.combo);
+      // A shard pays its flat 60: it is already the big prize, and letting
+      // the combo multiply it too would swamp every other score line.
+      const gained = mote.shard ? mote.value : mote.value * comboTier(state.combo);
       state.score += gained;
-      state.glow = Math.min(PULSE.maxGlow, state.glow + MOTE.glowGain);
-      burst(state, mote.x, mote.y, mote.bright ? '#ffeeb0' : '#ffcf5e', mote.bright ? 14 : 9, 130);
-      state.events.push(mote.bright ? EVENT_BRIGHT : EVENT_COLLECT);
+      const glowGain = mote.shard ? MOTE.shardGlowGain : MOTE.glowGain;
+      state.glow = Math.min(PULSE.maxGlow, state.glow + glowGain);
+      const color = mote.shard ? '#aee9ff' : (mote.bright ? '#ffeeb0' : '#ffcf5e');
+      addPopup(state, mote.x, mote.y - 16, `+${gained}`, color);
+      burst(state, mote.x, mote.y, color, mote.shard ? 18 : (mote.bright ? 14 : 9), 130);
+      state.events.push(mote.shard ? EVENT_SHARD : (mote.bright ? EVENT_BRIGHT : EVENT_COLLECT));
     }
   }
   if (p.invulnerable <= 0) {
@@ -274,6 +341,11 @@ function updateParticles(state, dt) {
     pt.vy *= 0.96;
   }
   state.particles = state.particles.filter((pt) => pt.age < pt.life);
+  for (const pop of state.popups) {
+    pop.age += dt;
+    pop.y -= 30 * dt;
+  }
+  state.popups = state.popups.filter((pop) => pop.age < pop.life);
 }
 
 /**
@@ -282,9 +354,22 @@ function updateParticles(state, dt) {
  * produced are left in state.events for the caller to drain.
  */
 export function stepWorld(state, input, dt) {
+  if (state.paused) return;
   if (state.screen === SCREEN_PLAY) {
     state.time += dt;
     state.nightLeft = Math.max(0, GAME.nightSeconds - state.time);
+    const phase = phaseFor(state.nightLeft);
+    if (phase !== state.phase) {
+      state.phase = phase;
+      state.banner = {
+        text: PHASES[phase].name, note: PHASES[phase].note, left: 2.4,
+      };
+      state.events.push(EVENT_PHASE);
+    }
+    if (state.banner) {
+      state.banner.left -= dt;
+      if (state.banner.left <= 0) state.banner = null;
+    }
     if (state.comboLeft > 0) {
       state.comboLeft -= dt;
       if (state.comboLeft <= 0) state.combo = 0;
